@@ -8,15 +8,32 @@
 # `postool` is a meta-state used by PostToolUse hooks: the script inspects
 # the tool_response payload and dispatches to either `error` or `working`.
 #
-# Configuration:
-#   CLAUDE_DISPLAY_URL  override the device URL.
-#                       default: http://claude-display.local/status
-#                       set to http://<ip>/status if mDNS doesn't resolve.
+# Configuration (in priority order):
+#   1. CLAUDE_DISPLAY_URL env var (set by the parent process)
+#   2. ~/.claude/hooks/claude-display.conf (sourced as POSIX shell)
+#      Recommended for persistent overrides — env vars in ~/.zshrc don't
+#      reliably reach hook subprocesses spawned by Claude Code.
+#   3. Default: http://claude-display.local/status (mDNS)
+#
+# The conf file should contain a single line like:
+#   CLAUDE_DISPLAY_URL=http://192.168.x.x/status
 
 set -u
 
 STATE="${1:-idle}"
 MSG_ARG="${2:-}"
+
+# Config file: optional, sourced if present.
+# Set CLAUDE_DISPLAY_URL here when mDNS doesn't work on your network.
+#   echo 'CLAUDE_DISPLAY_URL=http://192.168.x.x/status' > ~/.claude/hooks/claude-display.conf
+# Env vars (CLAUDE_DISPLAY_URL set in your shell) take priority over the file,
+# and the file takes priority over the mDNS default.
+CONF="${CLAUDE_DISPLAY_CONF:-$HOME/.claude/hooks/claude-display.conf}"
+if [ -f "$CONF" ]; then
+  # shellcheck disable=SC1090
+  . "$CONF"
+fi
+
 URL="${CLAUDE_DISPLAY_URL:-http://claude-display.local/status}"
 
 # Project name: prefer the git repo name; otherwise show parent/dir so

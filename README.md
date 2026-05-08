@@ -93,10 +93,13 @@ cp hooks/claude-display.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/claude-display.sh
 ```
 
-If `claude-display.local` doesn't resolve on your network, point the script at the device IP instead:
+If `claude-display.local` doesn't resolve on your network (corporate / guest WiFi often blocks mDNS), set the device URL in the hook config file:
 ```bash
-echo 'export CLAUDE_DISPLAY_URL=http://192.168.x.x/status' >> ~/.zshrc
+cat > ~/.claude/hooks/claude-display.conf <<'EOF'
+CLAUDE_DISPLAY_URL=http://192.168.x.x/status
+EOF
 ```
+Use the IP shown on the bottom of the OLED at boot. The hook script sources this file at runtime, which is more reliable than `~/.zshrc` because Claude Code spawns hooks as non-login subprocesses that don't inherit shell rc env vars.
 
 ### 3 · Wire up Claude Code hooks
 
@@ -150,8 +153,11 @@ State values: `idle` · `working` · `waiting` · `done` · `error`
 - `TZ_OFFSET_SEC` — UTC offset in seconds for the clock
 
 ### Hook script
-- `CLAUDE_DISPLAY_URL` — override the device URL (env var)
-- `CLAUDE_DISPLAY_LOG` — override the log file path (env var)
+Persistent settings live in `~/.claude/hooks/claude-display.conf` (sourced as POSIX shell). See [`examples/claude-display.conf.example`](examples/claude-display.conf.example).
+- `CLAUDE_DISPLAY_URL` — full URL of the device's `/status` endpoint. Default: `http://claude-display.local/status`.
+- `CLAUDE_DISPLAY_LOG` — log file path. Default: `~/.claude/hooks/claude-display.log`.
+
+Both can also be set as env vars (env wins over the conf file).
 
 ### Firmware constants (in the `.ino`, less commonly tweaked)
 - `MAX_SESSIONS` — how many concurrent sessions to track (default 4)

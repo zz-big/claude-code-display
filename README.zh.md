@@ -93,10 +93,13 @@ cp hooks/claude-display.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/claude-display.sh
 ```
 
-如果 `claude-display.local` 在你网络里解析不到，改用 IP：
+如果 `claude-display.local` 在你网络里解析不到（公司 WiFi、客网这类常会屏蔽 mDNS），把设备 URL 写到 hook 配置文件里：
 ```bash
-echo 'export CLAUDE_DISPLAY_URL=http://192.168.x.x/status' >> ~/.zshrc
+cat > ~/.claude/hooks/claude-display.conf <<'EOF'
+CLAUDE_DISPLAY_URL=http://192.168.x.x/status
+EOF
 ```
+IP 看 OLED 启动时底部那行。Hook 脚本会运行时 source 这个文件，比 `~/.zshrc` 更靠谱 —— 因为 Claude Code 派生 hook 子进程时不一定会继承 shell rc 里的环境变量。
 
 ### 3 · 配 Claude Code hooks
 
@@ -149,9 +152,12 @@ Hook 脚本的 curl 是后台执行的，1 秒超时 —— 设备掉线也不�
 - `MDNS_NAME` —— mDNS 主机名（默认 `claude-display`）
 - `TZ_OFFSET_SEC` —— UTC 时区偏移（秒），例如中国是 `8 * 3600`
 
-### Hook 脚本环境变量
-- `CLAUDE_DISPLAY_URL` —— 覆盖设备 URL
-- `CLAUDE_DISPLAY_LOG` —— 覆盖日志文件路径
+### Hook 脚本配置
+持久化配置写在 `~/.claude/hooks/claude-display.conf`（按 POSIX shell 格式 source）。模板见 [`examples/claude-display.conf.example`](examples/claude-display.conf.example)。
+- `CLAUDE_DISPLAY_URL` —— 设备 `/status` 完整 URL。默认 `http://claude-display.local/status`。
+- `CLAUDE_DISPLAY_LOG` —— 日志路径。默认 `~/.claude/hooks/claude-display.log`。
+
+两者也可以直接当环境变量设（环境变量优先级高于配置文件）。
 
 ### 固件常量（在 `.ino` 里，一般不动）
 - `MAX_SESSIONS` —— 同时追踪的 session 数（默认 4）

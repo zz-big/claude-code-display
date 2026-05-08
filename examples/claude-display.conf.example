@@ -1,0 +1,13 @@
+# Claude Code Display — local hook config.
+# Copy this file to ~/.claude/hooks/claude-display.conf and edit if mDNS
+# (claude-display.local) doesn't resolve on your network.
+#
+# Lines are sourced as POSIX shell — keep them as `KEY=value` (no spaces
+# around `=`).
+
+# Full URL of the device's /status endpoint. Use the IP shown on the OLED
+# at boot, or your router's static-DHCP entry for the device's MAC.
+CLAUDE_DISPLAY_URL=http://192.168.x.x/status
+
+# Optional: where to write the hook log (default: ~/.claude/hooks/claude-display.log).
+# CLAUDE_DISPLAY_LOG=$HOME/.claude/hooks/claude-display.log

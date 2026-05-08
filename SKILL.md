@@ -25,30 +25,46 @@ If any of these isn't true, **stop and tell the user what's missing** before pro
 
 Confirm the current working directory is the cloned repo. The repo root must contain `hooks/claude-display.sh`, `examples/settings.json`, and `README.md`. If not, ask the user where they cloned it. Use that path for all subsequent steps. Don't proceed if you can't find these files — the user may have run from the wrong directory.
 
-### 2. Verify the device is reachable
+### 2. Verify the device is reachable & decide on the URL
 
-Ask the user for the device's IP **or** confirm mDNS resolution works. Try in this order:
+Try mDNS first; if it fails, ask the user for the IP shown on the OLED at boot.
 
 ```bash
-# Try mDNS first (works on most LANs).
+# Try mDNS — works on most home LANs but blocked on many corporate / guest networks.
 curl -s -m 3 http://claude-display.local/status
+```
 
-# If mDNS fails, ask the user for the IP shown on the OLED at boot,
-# then test with the IP:
+A successful response is a JSON object containing `count` and `sessions`. If mDNS fails:
+
+```bash
+# Ask the user: what IP is shown on the OLED's bottom row at boot?
+# Then test:
 curl -s -m 3 http://<ip>/status
 ```
 
-Successful response is a JSON object containing `count` and `sessions`. If both fail:
-- Verify the user can ping the device (`ping claude-display.local` or `ping <ip>`).
+If both fail:
+- Verify the user can `ping claude-display.local` or `ping <ip>`.
 - Verify they're on the same WiFi network as the device.
-- Check `arp -a` on Mac to find devices on the LAN.
+- Check `arp -a` on Mac for devices on the LAN.
 
 Don't proceed past this step until reachability is confirmed.
 
-### 3. Decide on the device URL
+### 3. Write the device URL to the hook config
 
-- mDNS works → use `http://claude-display.local/status` (default in script, no env var needed).
-- mDNS fails but IP works → user must `export CLAUDE_DISPLAY_URL=http://<ip>/status` in their shell config (`~/.zshrc` or `~/.bashrc`). Do this with `Edit`, not `>>` — preserve existing shell config.
+The hook script reads `~/.claude/hooks/claude-display.conf` at runtime. Setting `CLAUDE_DISPLAY_URL` there is more reliable than an env var in `~/.zshrc` (Claude Code spawns hooks as non-login subprocesses, which don't necessarily inherit shell rc env).
+
+```bash
+mkdir -p ~/.claude/hooks
+```
+
+- **mDNS works** → no config file needed; the script falls back to `http://claude-display.local/status`. Skip writing the conf.
+- **mDNS fails, IP works** → write the conf:
+  ```bash
+  cat > ~/.claude/hooks/claude-display.conf <<'EOF'
+  CLAUDE_DISPLAY_URL=http://192.168.X.X/status
+  EOF
+  ```
+  Replace `192.168.X.X` with the user's actual IP. Use `Write` rather than appending — this file is owned by us.
 
 ### 4. Install the hook script
 
