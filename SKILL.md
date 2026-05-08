@@ -137,14 +137,14 @@ Confirm the current working directory is the cloned repo. The repo root must con
 
 ### B2. Verify the device is reachable & decide on the URL
 
-Try mDNS first; if it fails, ask the user for the IP shown on the OLED at boot.
+Always test with `curl` (not `ping`) — they use different resolvers. On macOS especially, `ping claude-display.local` works (uses Bonjour directly) but `curl http://claude-display.local` may NOT, because curl uses `getaddrinfo()` which doesn't always consult mDNS for `.local` names. The hook script uses curl, so curl is what matters.
 
 ```bash
-# Try mDNS — works on most home LANs but blocked on many corporate / guest networks.
+# Test mDNS via curl (the same path the hook uses).
 curl -s -m 3 http://claude-display.local/status
 ```
 
-A successful response is a JSON object containing `count` and `sessions`. If mDNS fails:
+A successful response is a JSON object containing `count` and `sessions`. If this curl hangs or returns nothing (HTTP 000):
 
 ```bash
 # Ask the user: what IP is shown on the OLED's bottom row at boot?
@@ -153,11 +153,11 @@ curl -s -m 3 http://<ip>/status
 ```
 
 If both fail:
-- Verify the user can `ping claude-display.local` or `ping <ip>`.
 - Verify they're on the same WiFi network as the device.
 - Check `arp -a` on Mac for devices on the LAN.
+- `ping <ip>` to confirm basic reachability.
 
-Don't proceed past this step until reachability is confirmed.
+Don't proceed past this step until **the curl test** succeeds — `ping` working is not enough.
 
 ### B3. Write the device URL to the hook config
 
