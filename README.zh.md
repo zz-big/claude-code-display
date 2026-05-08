@@ -4,7 +4,9 @@
 
 [English →](README.md)
 
-![实物演示](docs/images/demo.jpg)
+<p align="center">
+  <img src="docs/images/demo.jpg" alt="实物演示" width="420">
+</p>
 
 <sub>实拍 —— `WORKING` 状态，正在编辑 `README.zh.md`，右上角显示已用时长。还有[短视频演示](docs/videos/demo.mp4)。</sub>
 

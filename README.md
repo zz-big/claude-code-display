@@ -4,7 +4,9 @@
 
 [中文文档 →](README.zh.md)
 
-![demo](docs/images/demo.jpg)
+<p align="center">
+  <img src="docs/images/demo.jpg" alt="demo" width="420">
+</p>
 
 <sub>Live shot — `WORKING` state, showing the current tool (`Edit: README.zh.md`) and elapsed time. Watch a [short video demo](docs/videos/demo.mp4).</sub>
 
