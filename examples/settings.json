@@ -1,0 +1,26 @@
+{
+  "_comment": "Merge the `hooks` block below into your ~/.claude/settings.json. Restart Claude Code afterwards (hooks are loaded at session start).",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh idle ready" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh working" } ] }
+    ],
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh working" } ] }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh postool" } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh waiting" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh done" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh idle" } ] }
+    ]
+  }
+}

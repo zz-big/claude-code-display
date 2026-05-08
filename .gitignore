@@ -1,0 +1,22 @@
+# Local config (contains WiFi credentials)
+firmware/claude_status/config.h
+
+# Build artifacts
+build/
+*.bin
+*.elf
+*.hex
+*.map
+.pio/
+.pioenvs/
+
+# Editor / IDE
+.DS_Store
+.vscode/
+.theia/
+.idea/
+*.swp
+*.swo
+
+# Hook log file (created at runtime)
+hooks/claude-display.log
