@@ -5,10 +5,26 @@
 [English →](README.md)
 
 <p align="center">
-  <img src="docs/images/demo.jpg" alt="实物演示" width="420">
+  <img src="docs/images/oled-running.jpg" alt="OLED 实物，WORKING 状态" width="420">
 </p>
 
 <sub>实拍 —— `WORKING` 状态，正在编辑 `README.zh.md`，右上角显示已用时长。还有[短视频演示](docs/videos/demo.mp4)。</sub>
+
+## Claude Code 用户 —— 一行命令装好
+
+```bash
+git clone https://github.com/zz-big/claude-code-display.git
+cd claude-code-display
+claude
+```
+
+然后在 Claude Code 里直接说：
+
+> 帮我装一下
+
+仓库里带 [`CLAUDE.md`](CLAUDE.md) 和 [`SKILL.md`](SKILL.md) —— Claude Code 会自动读到，按里面的步骤走完整套 Mac/Linux 端配置：拷 hook 脚本到 `~/.claude/hooks/`、把 hooks 配置合并进 `~/.claude/settings.json`、验证设备能连通、跑测试。
+
+固件烧录还是要你自己来（看下面 [§ 快速上手 → 烧录固件](#1--烧录固件)），但 "ESP32 上电联网" 之后到 "Claude Code 推送状态" 这段全自动。
 
 ## 它能干嘛
 
@@ -168,7 +184,8 @@ Arduino IDE → Tools → Partition Scheme 改成 **Huge APP (3MB No OTA/1MB SPI
 ```
 claude-code-display/
 ├── README.md / README.zh.md
-├── SKILL.md                               # 让 Claude Code 自动装 Mac 端
+├── CLAUDE.md                               # Claude Code 打开仓库时自动读的项目提示
+├── SKILL.md                                # Claude Code 装 Mac 端时跟着走的步骤指引
 ├── LICENSE                                 # MIT
 ├── firmware/
 │   └── claude_status/

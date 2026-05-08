@@ -5,10 +5,26 @@
 [中文文档 →](README.zh.md)
 
 <p align="center">
-  <img src="docs/images/demo.jpg" alt="demo" width="420">
+  <img src="docs/images/oled-running.jpg" alt="OLED running, showing WORKING state" width="420">
 </p>
 
 <sub>Live shot — `WORKING` state, showing the current tool (`Edit: README.zh.md`) and elapsed time. Watch a [short video demo](docs/videos/demo.mp4).</sub>
+
+## For Claude Code users — one-shot install
+
+```bash
+git clone https://github.com/zz-big/claude-code-display.git
+cd claude-code-display
+claude
+```
+
+Then in Claude Code, just say:
+
+> install this for me
+
+The repo ships with a [`CLAUDE.md`](CLAUDE.md) and a [`SKILL.md`](SKILL.md) that walk Claude Code through the host-side configuration — copying the hook script to `~/.claude/hooks/`, merging the hooks block into `~/.claude/settings.json`, validating connectivity to your ESP32, and testing.
+
+You still flash the firmware manually (see [§ Quick start → Flash the firmware](#1--flash-the-firmware) below), but everything between "ESP32 is on the network" and "Claude Code talks to it" is automated.
 
 ## What it does
 
@@ -168,7 +184,8 @@ Switch the partition scheme to **Huge APP (3MB No OTA/1MB SPIFFS)** in Arduino I
 ```
 claude-code-display/
 ├── README.md / README.zh.md
-├── SKILL.md                               # Lets Claude Code self-install the host side
+├── CLAUDE.md                               # Project hint Claude Code reads on open
+├── SKILL.md                                # Step-by-step install guide for Claude Code
 ├── LICENSE                                 # MIT
 ├── firmware/
 │   └── claude_status/
