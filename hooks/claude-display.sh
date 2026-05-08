@@ -135,8 +135,18 @@ fi
 
 # Optional log so you can see whether hooks fired (and what the device replied).
 LOG="${CLAUDE_DISPLAY_LOG:-$HOME/.claude/hooks/claude-display.log}"
+LOG_MAX_LINES="${CLAUDE_DISPLAY_LOG_MAX_LINES:-2000}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 echo "[$(date '+%H:%M:%S')] state=$STATE sid=$SESSION_TAG url=$URL json=$JSON" >> "$LOG"
+
+# Cheap rotation: when the file gets too long, keep only the tail. Only check
+# every ~50 invocations (modulo by line count) to avoid wc-on-every-event cost.
+if [ -f "$LOG" ] && [ "$(( RANDOM % 50 ))" -eq 0 ]; then
+  LINES="$(wc -l < "$LOG" 2>/dev/null || echo 0)"
+  if [ "$LINES" -gt "$(( LOG_MAX_LINES * 2 ))" ]; then
+    tail -n "$LOG_MAX_LINES" "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+  fi
+fi
 
 # Fire-and-forget with a 1 s timeout. An offline display must never block
 # Claude Code, so we background the curl and exit immediately.

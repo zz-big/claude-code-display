@@ -13,7 +13,7 @@
     "PostToolUse": [
       { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh postool" } ] }
     ],
-    "Notification": [
+    "PermissionRequest": [
       { "hooks": [ { "type": "command", "command": "~/.claude/hooks/claude-display.sh waiting" } ] }
     ],
     "Stop": [

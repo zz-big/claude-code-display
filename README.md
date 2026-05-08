@@ -10,6 +10,16 @@
 
 <sub>Live shot — `WORKING` state, showing the current tool (`Edit: README.zh.md`) and elapsed time. Watch a [short video demo](docs/videos/demo.mp4).</sub>
 
+## Requirements
+
+- **Claude Code ≥ 2.0** — older versions don't fire the `PermissionRequest` hook event, so WAITING flash on permission popups won't work. Check with `claude --version`.
+- **macOS, Linux, or Windows** for the host hook. Two interchangeable implementations ship in [`hooks/`](hooks/):
+  - **`claude-display.sh`** — POSIX bash. Used on macOS / Linux natively, and on Windows under **Git Bash** or **WSL**.
+  - **`claude-display.ps1`** — PowerShell 5.1+ port. Use this on **native Windows** (PowerShell or `cmd.exe` shells, no Git Bash needed). Same conf file, same env vars, same payload — just pick whichever matches your shell setup.
+- An **ESP32-C3 Super Mini** (or any ESP32 with 2.4 GHz WiFi) and a **0.96" SSD1306 OLED**.
+- A **2.4 GHz WiFi network** the ESP32 can join (ESP32-C3 has no 5 GHz radio).
+- For host install: `curl` (bash version) or PowerShell 5.1+ (PS version). `jq` recommended on bash (Git Bash ships curl; install jq separately if missing). For firmware install: `arduino-cli` (`brew install arduino-cli` / `winget install ArduinoSA.CLI`) or Arduino IDE.
+
 ## For Claude Code users — one-shot install
 
 ```bash
@@ -90,11 +100,21 @@ After boot the OLED shows the device's IP. The device is also reachable at `http
 
 ### 2 · Install the hook
 
+**macOS / Linux / Git Bash / WSL**:
 ```bash
 mkdir -p ~/.claude/hooks
 cp hooks/claude-display.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/claude-display.sh
 ```
+
+**Native Windows (PowerShell)**:
+```powershell
+$dir = Join-Path $HOME '.claude/hooks'
+New-Item -ItemType Directory -Path $dir -Force | Out-Null
+Copy-Item hooks/claude-display.ps1 $dir
+```
+
+Then in `~/.claude/settings.json`, point each hook command at the matching script. The bash version uses `~/.claude/hooks/claude-display.sh waiting`; the PowerShell version uses `pwsh -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.claude\hooks\claude-display.ps1" waiting`. See [`examples/settings.json`](examples/settings.json) for the full hook block (bash form) — replace the `command` strings with the pwsh form on native Windows.
 
 If `claude-display.local` doesn't resolve on your network (corporate / guest WiFi often blocks mDNS), set the device URL in the hook config file:
 ```bash
@@ -129,13 +149,25 @@ curl -X POST http://claude-display.local/clear
 ## How it works
 
 ```
-Claude Code event   →   shell hook   →   curl POST   →   ESP32 HTTP server   →   OLED
-   (e.g. Notification)    (~/.claude/hooks/...)            (your LAN)              (visible from across the room)
+Claude Code event       →   shell hook              →   curl POST   →   ESP32 HTTP server   →   OLED
+   (PreToolUse, etc.)       (~/.claude/hooks/...)         (your LAN)      (per-session state)     (visible from across the room)
 ```
 
-Each Claude Code event (`UserPromptSubmit`, `PreToolUse`, `Notification`, `Stop`, ...) fires the shell hook, which posts JSON to the ESP32. The firmware tracks per-session state and renders the most attention-worthy session, or a clock when nothing's happening.
+Event → state mapping (see [`examples/settings.json`](examples/settings.json)):
 
-The hook script has a 1-second `curl` timeout and runs in the background, so an offline display never blocks Claude Code.
+| Claude Code event   | OLED state |
+|---------------------|------------|
+| `SessionStart`      | IDLE       |
+| `UserPromptSubmit`  | WORKING    |
+| `PreToolUse`        | WORKING    |
+| `PermissionRequest` | **WAITING** (flashes — needs your attention) |
+| `PostToolUse`       | WORKING (or ERROR if the tool failed) |
+| `Stop`              | DONE       |
+| `SessionEnd`        | IDLE       |
+
+> **Note on Claude Code versions** — `PermissionRequest` is a **2.0+** hook event. Earlier versions delivered permission popups via `Notification`, which in newer versions also fires for unrelated things (idle 60s, auth, elicitation), so we deliberately don't subscribe to `Notification`. If you're on Claude Code < 2.0 and the OLED never flashes WAITING, that's why.
+
+The hook script has a 1-second `curl` timeout and runs in the background, so an offline display never blocks Claude Code. The firmware auto-reverts WORKING → IDLE after 5 minutes of silence (handles long builds without intermediate events, user interrupts, missed Stop hooks).
 
 ## HTTP API
 
@@ -159,8 +191,12 @@ State values: `idle` · `working` · `waiting` · `done` · `error`
 Persistent settings live in `~/.claude/hooks/claude-display.conf` (sourced as POSIX shell). See [`examples/claude-display.conf.example`](examples/claude-display.conf.example).
 - `CLAUDE_DISPLAY_URL` — full URL of the device's `/status` endpoint. Default: `http://claude-display.local/status`.
 - `CLAUDE_DISPLAY_LOG` — log file path. Default: `~/.claude/hooks/claude-display.log`.
+- `CLAUDE_DISPLAY_LOG_MAX_LINES` — log rotation threshold. Default 2000; the script truncates to the last N lines once the file exceeds 2N.
 
-Both can also be set as env vars (env wins over the conf file).
+All three can also be set as env vars (env wins over the conf file).
+
+### Security model — LAN-trust
+The HTTP API has **no authentication**. Anyone on the same LAN can POST to `/status` (change the screen) or `/clear` (drop sessions). This is intentional for a home-network gadget — adding tokens would complicate setup. Don't expose the device to the public internet, and treat untrusted-WiFi (cafés, conferences) as a screen-spoofing risk.
 
 ### Firmware constants (in the `.ino`, less commonly tweaked)
 - `MAX_SESSIONS` — how many concurrent sessions to track (default 4)
@@ -188,6 +224,14 @@ Switch the partition scheme to **Huge APP (3MB No OTA/1MB SPIFFS)** in Arduino I
 - Check `~/.claude/hooks/claude-display.log` — every hook invocation appends a line.
 - Validate `~/.claude/settings.json` is valid JSON: `python3 -c "import json,sys; json.load(open(sys.argv[1]))" ~/.claude/settings.json`.
 
+**WAITING never appears, even on permission popups**
+Two possibilities:
+1. Your Claude Code is older than 2.0 — `PermissionRequest` doesn't exist yet. Upgrade, or fall back to wiring `Notification → waiting` (you'll get spurious flashes for non-permission notifications, but at least the popups will show).
+2. Your `~/.claude/settings.json` is missing the `PermissionRequest` entry — re-merge from [`examples/settings.json`](examples/settings.json) and **fully restart** Claude Code (hooks load only at session start).
+
+**OLED randomly drops to the clock mid-task**
+A long-running tool (build, install, slow ssh, etc.) sent no events for 5 minutes — the firmware assumes the session died and reverts to IDLE. The next event will pull it back. If this is too aggressive, raise `WORKING_TIMEOUT_MS` in [`firmware/claude_status/claude_status.ino`](firmware/claude_status/claude_status.ino) and re-flash.
+
 ## Project layout
 
 ```
@@ -201,9 +245,11 @@ claude-code-display/
 │       ├── claude_status.ino               # Sketch (English comments throughout)
 │       └── config.h.example                # Copy to config.h and edit
 ├── hooks/
-│   └── claude-display.sh                   # Shell hook executed by Claude Code events
+│   ├── claude-display.sh                   # Bash hook (macOS / Linux / Git Bash / WSL)
+│   └── claude-display.ps1                  # PowerShell port (native Windows)
 ├── examples/
-│   └── settings.json                       # Hooks block to merge into ~/.claude/settings.json
+│   ├── settings.json                       # Hooks block to merge into ~/.claude/settings.json
+│   └── claude-display.conf.example         # Local URL/log overrides (shared by .sh and .ps1)
 └── docs/
     ├── images/                             # README photos (demo, hardware refs)
     └── videos/                             # README demo video

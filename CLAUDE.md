@@ -21,7 +21,8 @@ If the user just wants to read about the project or modify the code, treat it li
 
 ```
 firmware/claude_status/   ESP32 Arduino sketch + config.h template
-hooks/claude-display.sh   Mac/Linux shell hook fired on every Claude Code event
+hooks/claude-display.sh   Bash hook (macOS / Linux / Git Bash / WSL)
+hooks/claude-display.ps1  PowerShell port (native Windows)
 examples/settings.json    Hooks block to merge into ~/.claude/settings.json
 docs/                     README images and demo video
 SKILL.md                  Install guide for Claude (the agent)
@@ -33,7 +34,8 @@ README.md / README.zh.md  User-facing docs (English / Chinese)
 - **All code comments stay English.** This is an open-source project; non-English comments will get translated back.
 - **Never commit `firmware/claude_status/config.h`** — it contains WiFi credentials. The `.gitignore` already excludes it; the template is `config.h.example`.
 - **Don't introduce new heavy dependencies on the firmware side.** The current sketch fits in the default ESP32-C3 partition; adding e.g. `WiFiClientSecure` pushes it over and forces users to reconfigure their Arduino IDE.
-- **Hook script must stay POSIX-ish bash.** It runs on macOS and Linux as a Claude Code hook; don't rely on bash 5+ features or non-portable utilities.
+- **Bash hook must stay POSIX-ish.** `hooks/claude-display.sh` runs on macOS/Linux/Git Bash; don't rely on bash 5+ features or non-portable utilities (no associative arrays, no `mapfile`, no GNU-only flags).
+- **Keep the bash and PowerShell hooks in lockstep.** They share the same conf file, env var names, and JSON payload shape. If you change one (new state, new field, log format change, etc.), update the other in the same commit. The PS port targets PowerShell 5.1+ so it works on stock Windows without a pwsh install.
 - **Don't break existing HTTP endpoint shapes** without bumping a version somewhere — the hook script and any third-party integrations rely on them.
 
 ## Self-modification protection

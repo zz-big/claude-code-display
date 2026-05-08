@@ -61,7 +61,7 @@ const char* NTP_SERVER2 = "time.google.com";
 const int      MAX_SESSIONS         = 4;
 const uint32_t SESSION_STALE_MS     = 5UL * 60UL * 1000UL;   // 5 min idle -> drop
 const uint32_t SESSION_ROTATE_MS    = 5000;                   // multi-session rotation
-const uint32_t WORKING_TIMEOUT_MS   = 60000;                  // WORKING auto-revert -> IDLE
+const uint32_t WORKING_TIMEOUT_MS   = 300000;                 // WORKING auto-revert -> IDLE (5 min — long builds, npm/cargo, etc.)
 const uint32_t DONE_LINGER_MS       = 5000;                   // DONE shows briefly then yields
 
 // ============== State enum ==============
@@ -189,37 +189,30 @@ int findSession(const String& id) {
   return -1;
 }
 
+void initSession(int idx, const String& id) {
+  sessions[idx].id               = id;
+  sessions[idx].project          = "";
+  sessions[idx].state            = ST_IDLE;
+  sessions[idx].msg              = "";
+  sessions[idx].updatedAt        = millis();
+  sessions[idx].workingStartedAt = 0;
+  sessions[idx].lastDurationMs   = 0;
+  sessions[idx].promptCount      = 0;
+  sessions[idx].active           = true;
+}
+
 int findOrAllocSession(const String& id) {
   int idx = findSession(id);
   if (idx >= 0) return idx;
   for (int i = 0; i < MAX_SESSIONS; i++) {
-    if (!sessions[i].active) {
-      sessions[i].id               = id;
-      sessions[i].project          = "";
-      sessions[i].state            = ST_IDLE;
-      sessions[i].msg              = "";
-      sessions[i].updatedAt        = millis();
-      sessions[i].workingStartedAt = 0;
-      sessions[i].lastDurationMs   = 0;
-      sessions[i].promptCount      = 0;
-      sessions[i].active           = true;
-      return i;
-    }
+    if (!sessions[i].active) { initSession(i, id); return i; }
   }
   // All slots taken: replace the least-recently-updated one.
   int oldest = 0;
   for (int i = 1; i < MAX_SESSIONS; i++) {
     if (sessions[i].updatedAt < sessions[oldest].updatedAt) oldest = i;
   }
-  sessions[oldest].id               = id;
-  sessions[oldest].project          = "";
-  sessions[oldest].state            = ST_IDLE;
-  sessions[oldest].msg              = "";
-  sessions[oldest].updatedAt        = millis();
-  sessions[oldest].workingStartedAt = 0;
-  sessions[oldest].lastDurationMs   = 0;
-  sessions[oldest].promptCount      = 0;
-  sessions[oldest].active           = true;
+  initSession(oldest, id);
   return oldest;
 }
 
@@ -507,7 +500,7 @@ void handleStatus() {
     return;
   }
   String body = server.arg("plain");
-  StaticJsonDocument<512> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body);
   if (err) {
     server.send(400, "text/plain", String("bad json: ") + err.c_str());
@@ -554,12 +547,12 @@ void handleStatus() {
 }
 
 void handleGet() {
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   doc["count"] = activeSessionCount();
-  JsonArray arr = doc.createNestedArray("sessions");
+  JsonArray arr = doc["sessions"].to<JsonArray>();
   for (int i = 0; i < MAX_SESSIONS; i++) {
     if (!sessions[i].active) continue;
-    JsonObject o = arr.createNestedObject();
+    JsonObject o = arr.add<JsonObject>();
     o["id"]       = sessions[i].id;
     o["state"]    = stateName(sessions[i].state);
     o["msg"]      = sessions[i].msg;
@@ -567,7 +560,7 @@ void handleGet() {
     o["age_ms"]   = (uint32_t)(millis() - sessions[i].updatedAt);
     o["prompts"]  = sessions[i].promptCount;
   }
-  JsonObject st = doc.createNestedObject("stats");
+  JsonObject st = doc["stats"].to<JsonObject>();
   st["prompts"]   = stats.prompts;
   st["workingMs"] = stats.workingMs;
   st["day"]       = stats.day;
