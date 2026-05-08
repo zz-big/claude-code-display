@@ -18,14 +18,39 @@ The user cloned this repo and wants the display set up. Typical phrasings: *"ins
 
 ## Decide which parts to run
 
-Ask the user which they want. Default behavior:
+**Detect first, ask only what you can't detect.** Run these silently and gather context before saying anything:
 
-- If the device is **already flashed and reachable** (try `curl -s -m 3 http://claude-display.local/status` — should return JSON with `count` and `sessions`), skip Part A and go straight to Part B.
-- Otherwise, ask: *"Do you want me to flash the firmware to the ESP32 too? I'll need it plugged in via USB and your WiFi credentials. Or you can flash manually with Arduino IDE — see README.md."*
-  - User says yes → run Part A then Part B.
-  - User says no / "I'll flash manually" → run Part B only, but warn that Part B's reachability check will fail until the device is flashed.
+```bash
+# Is the device already flashed and reachable on the LAN?
+curl -s -m 3 http://claude-display.local/status
 
-Never start Part A without explicit user consent — flashing modifies hardware they own, and we'll handle WiFi credentials.
+# Is an ESP32 plugged in?
+"$CLI" board list 2>/dev/null   # see Part A1 for $CLI
+
+# What WiFi is the host currently on? (macOS)
+networksetup -getairportnetwork en0 2>/dev/null
+# Linux equivalent:
+# nmcli -t -f active,ssid dev wifi | awk -F: '$1=="yes"{print $2}'
+# or iwgetid -r
+
+# System timezone offset, as seconds — for TZ_OFFSET_SEC.
+TZ_HHMM="$(date +%z)"      # e.g. +0800
+TZ_OFFSET_SEC=$(( (${TZ_HHMM:0:1}1) * (10#${TZ_HHMM:1:2} * 3600 + 10#${TZ_HHMM:3:2} * 60) ))
+```
+
+Then decide:
+
+- **Device responds** (HTTP 200 with `count`/`sessions` JSON) → skip Part A, jump to Part B.
+- **Device doesn't respond, no ESP32 plugged in** → tell the user "I don't see a device. Either plug your ESP32 in via USB so I can flash it, or tell me to skip flashing and only configure the host side." Wait for their answer.
+- **Device doesn't respond, ESP32 IS plugged in** → present a single confirmation with the auto-detected values, then proceed:
+
+  > I found an ESP32 on `/dev/cu.usbmodem101` and you're currently connected to WiFi `<SSID>` on this Mac. Timezone looks like UTC+8.
+  >
+  > Want me to flash the firmware with these defaults? I'll need your WiFi password (it goes into `config.h` which is gitignored, never logged, never echoed).
+  >
+  > Or say "skip flashing" / "I'll flash manually" and I'll only do the host-side configuration.
+
+Never start Part A without explicit user consent for that prompt — flashing modifies hardware and we're handling credentials. But everything you can detect (port, SSID, timezone) should already be in the prompt as defaults, not asked one-by-one.
 
 # Part A — Firmware flash
 
@@ -59,38 +84,35 @@ Save the path as `$CLI` for the rest of Part A. If none of these work, tell the 
 
 These commands are safe to re-run — already-installed packages are no-ops. If the user's Arduino library directory is somewhere unusual (e.g. `~/Documents/Arduino` on Mac, which is TCC-protected), arduino-cli generally still works because it owns its own user-dir at `~/Library/Arduino15/`. Watch for "permission denied" though — if it happens, ask the user to grant Terminal access to Documents in **System Settings → Privacy & Security → Files and Folders**.
 
-### A3. Get the user's WiFi credentials and write `config.h`
+### A3. Write `config.h` (auto-detected SSID + timezone, asked-for password)
 
-**Critical**: WiFi passwords are sensitive. Follow these rules:
+By the time you reach this step you should already have these from the detection done in "Decide which parts to run":
+- `WIFI_SSID` from `networksetup -getairportnetwork en0` (macOS) / `nmcli` / `iwgetid`
+- `TZ_OFFSET_SEC` computed from `date +%z`
+- `MDNS_NAME` defaulted to `claude-display`
 
-- **Ask the user for SSID and password directly** — don't grep for them in their other configs.
-- **Never log the password** anywhere — not into any tracked file, not into the hook log, not back into chat output. Reference it as `<wifi password>` after writing.
-- **Never commit `config.h`** — it's already gitignored, but verify before any subsequent `git add .`.
-- If the user is on auto mode, **still ask** for the password — auto mode never authorizes credential exposure.
+The only value left to gather is `WIFI_PASSWORD` — **always ask the user**. Never grep keychain, login profiles, env vars, or any other config to discover it.
 
-Then write `firmware/claude_status/config.h` from the template. Use the `Edit` tool against `firmware/claude_status/config.h.example` — actually, copy first:
+If any of the auto-detections failed (Ethernet-only host, Linux without NetworkManager, weird `date +%z` output), ask just for the missing value — don't ask for things you already detected.
+
+**Strict rules around the password**:
+
+- **Never log the password** anywhere — not into a tracked file, not the hook log, not back into chat. After writing it to `config.h`, refer to it only as `<wifi password>`.
+- **Never put the password on a shell command line** (`echo "$PASS" >> file` will leak it via process listings). Use the `Edit` tool to write directly to the file.
+- **Never commit `config.h`** — it's gitignored, but verify before any subsequent `git add` (only stage specific files, never `git add .`).
+- **Auto mode does NOT authorize credential exposure.** Always ask, even when otherwise running unattended.
+
+Then:
 
 ```bash
 cp firmware/claude_status/config.h.example firmware/claude_status/config.h
 ```
 
-Then `Edit` `firmware/claude_status/config.h` to set:
-- `WIFI_SSID` — what the user gave you
-- `WIFI_PASSWORD` — what the user gave you (do not echo)
-- `MDNS_NAME` — leave as `claude-display` unless the user wants to customize
-- `TZ_OFFSET_SEC` — ask the user's timezone if unknown. Common: China `8 * 3600`, US East `-5 * 3600`, UTC `0`.
+`Edit` `firmware/claude_status/config.h` and set the four values. After editing, `Read` the file once to confirm the `YOUR_WIFI_*` placeholders are gone — but **do not paste the file contents into chat**, just confirm "config.h written" to the user.
 
-After editing, **verify** by reading the file back to confirm the placeholders are gone. Do not echo `WIFI_PASSWORD` back to chat.
+### A4. Confirm the serial port
 
-### A4. Detect the serial port
-
-```bash
-"$CLI" board list
-```
-
-Look for an entry containing "ESP32" (the FQBN column will say something like `esp32:esp32:esp32c3`). Common port patterns:
-- macOS: `/dev/cu.usbmodem*` or `/dev/cu.usbserial*`
-- Linux: `/dev/ttyUSB0`, `/dev/ttyACM0`
+You already detected this in the "Decide which parts to run" step via `arduino-cli board list`. If exactly one ESP32 was found, use it. If multiple were found, ask the user to pick. If the FQBN auto-detected as something other than `esp32:esp32:esp32c3` and the user hasn't said otherwise, default to `esp32:esp32:esp32c3` (this repo's reference hardware) and tell the user what you're using.
 
 If multiple ESP32 boards are listed, ask the user which to use. If none are listed, tell them to plug in the device and re-run.
 
