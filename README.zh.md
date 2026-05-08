@@ -22,9 +22,12 @@ claude
 
 > 帮我装一下
 
-仓库里带 [`CLAUDE.md`](CLAUDE.md) 和 [`SKILL.md`](SKILL.md) —— Claude Code 会自动读到，按里面的步骤走完整套 Mac/Linux 端配置：拷 hook 脚本到 `~/.claude/hooks/`、把 hooks 配置合并进 `~/.claude/settings.json`、验证设备能连通、跑测试。
+仓库里带 [`CLAUDE.md`](CLAUDE.md) 和 [`SKILL.md`](SKILL.md) —— Claude Code 自动读，整套流程都帮你做：
 
-固件烧录还是要你自己来（看下面 [§ 快速上手 → 烧录固件](#1--烧录固件)），但 "ESP32 上电联网" 之后到 "Claude Code 推送状态" 这段全自动。
+- **烧固件（按需，要你点头）** —— Claude 用 `arduino-cli` 装库、问你 WiFi 用户名密码和时区、写 `config.h`、找串口，编译 + 上传。开始前 ESP32 用 USB 接上电脑就行。
+- **Mac 端配置（必做）** —— 拷 hook 脚本到 `~/.claude/hooks/`、写设备 URL 配置（mDNS 不通时自动改成 IP）、合并 hooks 到 `~/.claude/settings.json`、跑测试。
+
+如果你已经手动烧好了，或者想自己用 Arduino IDE 烧，直接告诉 Claude，它会跳过烧录这步只做 Mac 端配置。手动烧录步骤在下面 [§ 快速上手 → 烧录固件](#1--烧录固件)。
 
 ## 它能干嘛
 

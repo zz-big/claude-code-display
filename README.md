@@ -22,9 +22,12 @@ Then in Claude Code, just say:
 
 > install this for me
 
-The repo ships with a [`CLAUDE.md`](CLAUDE.md) and a [`SKILL.md`](SKILL.md) that walk Claude Code through the host-side configuration — copying the hook script to `~/.claude/hooks/`, merging the hooks block into `~/.claude/settings.json`, validating connectivity to your ESP32, and testing.
+The repo ships with a [`CLAUDE.md`](CLAUDE.md) and a [`SKILL.md`](SKILL.md) that walk Claude Code through the whole setup:
 
-You still flash the firmware manually (see [§ Quick start → Flash the firmware](#1--flash-the-firmware) below), but everything between "ESP32 is on the network" and "Claude Code talks to it" is automated.
+- **Firmware flash (opt-in)** — Claude installs `arduino-cli` libraries, asks you for WiFi credentials and timezone, writes `config.h`, finds the serial port, then compiles and uploads. Plug the ESP32 in via USB before saying "install".
+- **Host wiring (required)** — copy the hook script to `~/.claude/hooks/`, write the device URL config (handles the case where mDNS doesn't work on your LAN), merge hooks into `~/.claude/settings.json`, validate.
+
+If you'd rather flash manually with Arduino IDE (or you've already flashed), just say so — Claude will skip the firmware step and only do the host side. Manual instructions are in [§ Quick start → Flash the firmware](#1--flash-the-firmware).
 
 ## What it does
 

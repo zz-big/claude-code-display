@@ -9,8 +9,11 @@ Most users clone this repo because they want the display set up on their machine
 When that happens:
 
 1. **Read [`SKILL.md`](SKILL.md)** — it's a step-by-step install guide written for you (Claude). Follow it.
-2. **Default to the host-side install only.** The firmware flash step requires the user's hands on the device, the right USB port, and the right Arduino IDE settings — don't try to do it for them. Point them at `README.md` § "Quick start → Flash the firmware".
-3. **Confirm prerequisites first** before touching their machine: device flashed and on the network, repo is the current working directory, etc. SKILL.md spells these out.
+2. SKILL.md has two halves:
+   - **Part A (firmware flash, opt-in)** — install Arduino libraries via `arduino-cli`, write `config.h` with the user's WiFi, detect the serial port, compile + upload. Only run this with **explicit user consent** because it touches hardware and handles credentials.
+   - **Part B (host wiring, required)** — copy the hook script, write the device URL config, merge hooks into `~/.claude/settings.json`, validate.
+3. **Skip Part A** if the device is already flashed and reachable (`curl -s -m 3 http://claude-display.local/status` returns JSON).
+4. **WiFi password handling**: ask directly, write to `config.h` via `Edit`, never echo or log it. Auto mode does NOT authorize credential exposure.
 
 If the user just wants to read about the project or modify the code, treat it like any other repo — no special action needed.
 

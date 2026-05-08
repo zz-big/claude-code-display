@@ -1,31 +1,141 @@
 ---
 name: claude-code-display
-description: Install and configure the Claude Code Display host side (hook script + settings.json). Use when the user has cloned this repo and wants the Mac/Linux side wired up so Claude Code events get pushed to their ESP32 OLED. Does NOT flash firmware — that's a separate manual step the user does in Arduino IDE.
+description: Install and configure the Claude Code Display end-to-end — both flashing the ESP32 firmware (libraries, config.h, compile, upload) and wiring up the Mac/Linux host side (hook script + settings.json). Use when the user has cloned this repo and wants the display set up. The firmware-flash half is opt-in (asks the user before touching their hardware).
 ---
 
-# Installing Claude Code Display (host side)
+# Installing Claude Code Display
 
-This skill configures the Mac/Linux side of the Claude Code Display project — copying the hook script, registering hooks in `~/.claude/settings.json`, and verifying the device is reachable. It does **not** flash firmware to the ESP32 (the user does that themselves in Arduino IDE before running this skill).
+This skill walks the user from a freshly cloned repo to a working display.
+
+It has two halves:
+
+- **Firmware flash (Part A — optional, opt-in)**: install Arduino libraries via `arduino-cli`, fill in `config.h` with the user's WiFi, detect the serial port, compile + upload.
+- **Host wiring (Part B — required)**: copy the hook script to `~/.claude/hooks/`, write a config file with the device URL, merge hooks into `~/.claude/settings.json`, validate connectivity.
 
 ## When to use
 
-The user has cloned/downloaded the `claude-code-display` repo and wants the host side installed. Typical phrasings: *"install this"*, *"set this up"*, *"configure my Claude Code to talk to the display"*.
+The user cloned this repo and wants the display set up. Typical phrasings: *"install this"*, *"set this up"*, *"装一下"*, *"帮我配置"*.
 
-## Prerequisites the user must have done first
+## Decide which parts to run
 
-1. Cloned this repo somewhere on their machine.
-2. Already flashed `firmware/claude_status/claude_status.ino` to the ESP32 (after copying `config.h.example` → `config.h` and editing WiFi credentials).
-3. The device is powered on and connected to the same LAN as the user's computer.
+Ask the user which they want. Default behavior:
 
-If any of these isn't true, **stop and tell the user what's missing** before proceeding — don't try to "fix" it by guessing credentials or skipping checks.
+- If the device is **already flashed and reachable** (try `curl -s -m 3 http://claude-display.local/status` — should return JSON with `count` and `sessions`), skip Part A and go straight to Part B.
+- Otherwise, ask: *"Do you want me to flash the firmware to the ESP32 too? I'll need it plugged in via USB and your WiFi credentials. Or you can flash manually with Arduino IDE — see README.md."*
+  - User says yes → run Part A then Part B.
+  - User says no / "I'll flash manually" → run Part B only, but warn that Part B's reachability check will fail until the device is flashed.
 
-## Step-by-step
+Never start Part A without explicit user consent — flashing modifies hardware they own, and we'll handle WiFi credentials.
 
-### 1. Locate the repo
+# Part A — Firmware flash
+
+### A1. Locate `arduino-cli`
+
+Try in order, use the first that exists:
+
+```bash
+# 1. System install (recommended — `brew install arduino-cli` on Mac).
+which arduino-cli
+
+# 2. Bundled inside Arduino IDE 2.x on Mac.
+ls "/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"
+
+# 3. Bundled on Linux (path may vary by distro).
+ls /opt/Arduino*/resources/app/lib/backend/resources/arduino-cli 2>/dev/null
+```
+
+Save the path as `$CLI` for the rest of Part A. If none of these work, tell the user:
+
+> No `arduino-cli` found. Install with `brew install arduino-cli` (Mac) or download from https://arduino.github.io/arduino-cli/. Then re-run.
+
+### A2. Install ESP32 board package + libraries (idempotent)
+
+```bash
+"$CLI" core update-index 2>&1 | tail -2
+"$CLI" core install esp32:esp32
+"$CLI" lib install "U8g2"
+"$CLI" lib install "ArduinoJson"
+```
+
+These commands are safe to re-run — already-installed packages are no-ops. If the user's Arduino library directory is somewhere unusual (e.g. `~/Documents/Arduino` on Mac, which is TCC-protected), arduino-cli generally still works because it owns its own user-dir at `~/Library/Arduino15/`. Watch for "permission denied" though — if it happens, ask the user to grant Terminal access to Documents in **System Settings → Privacy & Security → Files and Folders**.
+
+### A3. Get the user's WiFi credentials and write `config.h`
+
+**Critical**: WiFi passwords are sensitive. Follow these rules:
+
+- **Ask the user for SSID and password directly** — don't grep for them in their other configs.
+- **Never log the password** anywhere — not into any tracked file, not into the hook log, not back into chat output. Reference it as `<wifi password>` after writing.
+- **Never commit `config.h`** — it's already gitignored, but verify before any subsequent `git add .`.
+- If the user is on auto mode, **still ask** for the password — auto mode never authorizes credential exposure.
+
+Then write `firmware/claude_status/config.h` from the template. Use the `Edit` tool against `firmware/claude_status/config.h.example` — actually, copy first:
+
+```bash
+cp firmware/claude_status/config.h.example firmware/claude_status/config.h
+```
+
+Then `Edit` `firmware/claude_status/config.h` to set:
+- `WIFI_SSID` — what the user gave you
+- `WIFI_PASSWORD` — what the user gave you (do not echo)
+- `MDNS_NAME` — leave as `claude-display` unless the user wants to customize
+- `TZ_OFFSET_SEC` — ask the user's timezone if unknown. Common: China `8 * 3600`, US East `-5 * 3600`, UTC `0`.
+
+After editing, **verify** by reading the file back to confirm the placeholders are gone. Do not echo `WIFI_PASSWORD` back to chat.
+
+### A4. Detect the serial port
+
+```bash
+"$CLI" board list
+```
+
+Look for an entry containing "ESP32" (the FQBN column will say something like `esp32:esp32:esp32c3`). Common port patterns:
+- macOS: `/dev/cu.usbmodem*` or `/dev/cu.usbserial*`
+- Linux: `/dev/ttyUSB0`, `/dev/ttyACM0`
+
+If multiple ESP32 boards are listed, ask the user which to use. If none are listed, tell them to plug in the device and re-run.
+
+If `board list` shows the port but doesn't auto-detect the FQBN, default to `esp32:esp32:esp32c3` (this repo's reference hardware). Only override if the user says they're using a different board.
+
+### A5. Compile and upload
+
+The default ESP32-C3 partition (1.3MB app) is too small for the GB2312 Chinese font. Always use `huge_app`:
+
+```bash
+"$CLI" compile \
+  --fqbn "esp32:esp32:esp32c3:PartitionScheme=huge_app" \
+  --upload --port "<port>" \
+  firmware/claude_status
+```
+
+Watch for:
+- **"Sketch too big"** → partition flag was missed. Re-run with `:PartitionScheme=huge_app`.
+- **"could not open port"** → wrong port, or another program (Serial Monitor, etc.) has it open. Close other tools and retry.
+- **"timed out waiting for packet"** → the board didn't enter download mode. On ESP32-C3 Super Mini, hold the `BOOT` button while plugging USB. Or just retry — usually works on the second try.
+
+After successful upload, wait ~10 seconds for the device to boot and join WiFi:
+
+```bash
+sleep 12
+curl -s -m 3 http://claude-display.local/status
+```
+
+If that responds with JSON, Part A is done. If it doesn't, ask the user what's on the OLED (look for "WiFi FAIL" or an IP address). If the OLED shows an IP, capture it for Part B. If the OLED is blank or shows "WiFi FAIL", their credentials are wrong — ask again.
+
+# Part B — Host wiring
+
+## Prerequisites checklist (Part B alone)
+
+If running Part B without A, verify:
+
+1. The user is in the cloned repo (current dir contains `hooks/`, `examples/`, `README.md`).
+2. The device is flashed and on the LAN.
+3. The device is reachable (`curl -m 3 http://claude-display.local/status` or via IP).
+
+### B1. Locate the repo
 
 Confirm the current working directory is the cloned repo. The repo root must contain `hooks/claude-display.sh`, `examples/settings.json`, and `README.md`. If not, ask the user where they cloned it. Use that path for all subsequent steps. Don't proceed if you can't find these files — the user may have run from the wrong directory.
 
-### 2. Verify the device is reachable & decide on the URL
+### B2. Verify the device is reachable & decide on the URL
 
 Try mDNS first; if it fails, ask the user for the IP shown on the OLED at boot.
 
@@ -49,7 +159,7 @@ If both fail:
 
 Don't proceed past this step until reachability is confirmed.
 
-### 3. Write the device URL to the hook config
+### B3. Write the device URL to the hook config
 
 The hook script reads `~/.claude/hooks/claude-display.conf` at runtime. Setting `CLAUDE_DISPLAY_URL` there is more reliable than an env var in `~/.zshrc` (Claude Code spawns hooks as non-login subprocesses, which don't necessarily inherit shell rc env).
 
@@ -66,7 +176,7 @@ mkdir -p ~/.claude/hooks
   ```
   Replace `192.168.X.X` with the user's actual IP. Use `Write` rather than appending — this file is owned by us.
 
-### 4. Install the hook script
+### B4. Install the hook script
 
 ```bash
 mkdir -p ~/.claude/hooks
@@ -88,7 +198,7 @@ The log should show `state=waiting` and the device should respond `{"ok":true}` 
 curl -X POST http://claude-display.local/clear   # or http://<ip>/clear
 ```
 
-### 5. Merge hook config into `~/.claude/settings.json`
+### B5. Merge hook config into `~/.claude/settings.json`
 
 This is the **critical** step. The user almost certainly has other settings (`model`, `permissions`, etc.) in `~/.claude/settings.json` that you must preserve.
 
@@ -107,7 +217,7 @@ Use the `Edit` tool for surgical changes. Do not use `Write` to clobber the whol
 
 **Self-modification protection**: Claude Code's sandbox may block writes to `~/.claude/settings.json`. If you hit a permission error, print the exact JSON block the user needs to merge in manually and stop — don't try workarounds.
 
-### 6. Final test
+### B6. Final test
 
 ```bash
 # 1. From the user's shell (so env vars apply):
@@ -125,12 +235,14 @@ Then tell the user:
 
 ## Things to NOT do
 
-- Do not try to flash the firmware — that requires the user's hands on the device, the right partition scheme settings, and the right serial port. Tell them to follow `README.md` § "Quick start → 1. Flash the firmware".
-- Do not write the user's WiFi password anywhere we can see — `config.h` is gitignored, but never commit it or display it back to the user beyond what they typed.
+- **Never start Part A without explicit user consent.** Flashing modifies their hardware and we'll handle their WiFi password — both require informed buy-in.
+- **Never log or echo the WiFi password.** Not into `claude-display.log`, not into a tool result, not back into chat. Reference it as `<wifi password>` after `Edit`-ing it into `config.h`. Auto mode does NOT authorize credential exposure.
+- **Never commit `config.h`.** It's gitignored, but verify before any subsequent `git add .` — only stage specific files.
 - Do not assume mDNS works on every network. Corporate WiFi, guest WiFi, and some routers block multicast DNS.
 - Do not modify `~/.claude/settings.json` without backing it up first if it's non-empty: `cp ~/.claude/settings.json ~/.claude/settings.json.bak`.
-- Do not silently ignore errors from `curl`, `jq`, or JSON parsing — report them to the user so they can debug.
-- Do not assume the script's default `claude-display.local` URL works for everyone. Always ask or test.
+- Do not silently ignore errors from `arduino-cli`, `curl`, `jq`, or JSON parsing — report them to the user so they can debug.
+- Do not assume the script's default `claude-display.local` URL works for everyone. Always test or ask.
+- Do not skip the `:PartitionScheme=huge_app` flag on ESP32-C3 — without it, the GB2312 Chinese font won't fit and compile fails.
 
 ## Useful debugging commands
 
