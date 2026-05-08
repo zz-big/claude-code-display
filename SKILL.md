@@ -27,30 +27,30 @@ curl -s -m 3 http://claude-display.local/status
 # Is an ESP32 plugged in?
 "$CLI" board list 2>/dev/null   # see Part A1 for $CLI
 
-# What WiFi is the host currently on? (macOS)
-networksetup -getairportnetwork en0 2>/dev/null
-# Linux equivalent:
-# nmcli -t -f active,ssid dev wifi | awk -F: '$1=="yes"{print $2}'
-# or iwgetid -r
-
 # System timezone offset, as seconds — for TZ_OFFSET_SEC.
 TZ_HHMM="$(date +%z)"      # e.g. +0800
 TZ_OFFSET_SEC=$(( (${TZ_HHMM:0:1}1) * (10#${TZ_HHMM:1:2} * 3600 + 10#${TZ_HHMM:3:2} * 60) ))
 ```
 
+WiFi SSID is **not** auto-detected — even on macOS where `networksetup -getairportnetwork en0` would tell you the Mac's current network, the ESP32 may need to connect to a different one. ESP32-C3 only supports 2.4 GHz; if the host is on 5 GHz, that's often a different SSID. Always ask.
+
 Then decide:
 
 - **Device responds** (HTTP 200 with `count`/`sessions` JSON) → skip Part A, jump to Part B.
 - **Device doesn't respond, no ESP32 plugged in** → tell the user "I don't see a device. Either plug your ESP32 in via USB so I can flash it, or tell me to skip flashing and only configure the host side." Wait for their answer.
-- **Device doesn't respond, ESP32 IS plugged in** → present a single confirmation with the auto-detected values, then proceed:
+- **Device doesn't respond, ESP32 IS plugged in** → present a single confirmation with the auto-detected port and timezone, then proceed:
 
-  > I found an ESP32 on `/dev/cu.usbmodem101` and you're currently connected to WiFi `<SSID>` on this Mac. Timezone looks like UTC+8.
+  > I found an ESP32 on `/dev/cu.usbmodem101`. Timezone looks like UTC+8 (from your system).
   >
-  > Want me to flash the firmware with these defaults? I'll need your WiFi password (it goes into `config.h` which is gitignored, never logged, never echoed).
+  > To flash it I need:
+  > - **WiFi SSID** (the network the ESP32 should join — note ESP32-C3 only does 2.4 GHz, so make sure that's available)
+  > - **WiFi password**
+  >
+  > Both go into `config.h`, which is gitignored. The password is never logged, never echoed back.
   >
   > Or say "skip flashing" / "I'll flash manually" and I'll only do the host-side configuration.
 
-Never start Part A without explicit user consent for that prompt — flashing modifies hardware and we're handling credentials. But everything you can detect (port, SSID, timezone) should already be in the prompt as defaults, not asked one-by-one.
+Never start Part A without explicit user consent for that prompt — flashing modifies hardware and we're handling credentials. Auto-detect what you can (port, timezone) so the prompt is shorter, but always ask for SSID and password explicitly.
 
 # Part A — Firmware flash
 
@@ -84,16 +84,17 @@ Save the path as `$CLI` for the rest of Part A. If none of these work, tell the 
 
 These commands are safe to re-run — already-installed packages are no-ops. If the user's Arduino library directory is somewhere unusual (e.g. `~/Documents/Arduino` on Mac, which is TCC-protected), arduino-cli generally still works because it owns its own user-dir at `~/Library/Arduino15/`. Watch for "permission denied" though — if it happens, ask the user to grant Terminal access to Documents in **System Settings → Privacy & Security → Files and Folders**.
 
-### A3. Write `config.h` (auto-detected SSID + timezone, asked-for password)
+### A3. Write `config.h` (auto-detected timezone, asked-for SSID + password)
 
-By the time you reach this step you should already have these from the detection done in "Decide which parts to run":
-- `WIFI_SSID` from `networksetup -getairportnetwork en0` (macOS) / `nmcli` / `iwgetid`
-- `TZ_OFFSET_SEC` computed from `date +%z`
+By the time you reach this step you should already have:
+- `TZ_OFFSET_SEC` computed from `date +%z` (auto-detected — system timezone is reliable)
 - `MDNS_NAME` defaulted to `claude-display`
 
-The only value left to gather is `WIFI_PASSWORD` — **always ask the user**. Never grep keychain, login profiles, env vars, or any other config to discover it.
+You should have asked the user for and received:
+- `WIFI_SSID` — always asked, never auto-detected (the ESP32 may need a different network than the host)
+- `WIFI_PASSWORD` — always asked, never grep'd from keychain / configs / env
 
-If any of the auto-detections failed (Ethernet-only host, Linux without NetworkManager, weird `date +%z` output), ask just for the missing value — don't ask for things you already detected.
+If `date +%z` returned something weird (rare), fall back to asking the timezone too.
 
 **Strict rules around the password**:
 
