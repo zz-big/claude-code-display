@@ -56,14 +56,9 @@ claude
 
 ### 1 · 烧录固件
 
-Arduino IDE 里装 **U8g2**、**ArduinoJson** 库 + **esp32** 板子包（Espressif），然后：
+Arduino IDE 里装 **U8g2**、**ArduinoJson** 库 + **esp32** 板子包（Espressif）。打开 `firmware/claude_status/claude_status.ino`，板型选 **ESP32C3 Dev Module**、分区方案选 **Huge APP**，上传 —— 没有需要改的配置文件。
 
-```bash
-cp firmware/claude_status/config.h.example firmware/claude_status/config.h
-# 编辑 config.h 填 WiFi 和时区偏移
-```
-
-打开 `claude_status.ino`，板型选 **ESP32C3 Dev Module**、分区方案选 **Huge APP**，上传。烧好后 OLED 显示 IP，mDNS 名 `http://claude-display.local` 也能访问。
+首次开机设备读不到 WiFi 凭据，就开一个开放热点 `claude-display-XXXX`。手机连上去后 captive portal 会自动弹出设置页（不弹就手动开 `http://192.168.4.1`），选你自己的 WiFi、输密码、设时区（UTC 偏移，例如中国填 `8`、美东填 `-5`），点 **Save and reboot**。重启后 OLED 显示 IP，也可以通过 mDNS `http://claude-display.local` 访问。
 
 ### 2 · 安装 hook 脚本
 
@@ -111,7 +106,7 @@ Hook 是 fire-and-forget、1 秒超时，设备掉线不卡 Claude Code。固件
 
 ## 配置项
 
-- **固件**（[`config.h`](firmware/claude_status/config.h.example)）：`WIFI_SSID`、`WIFI_PASSWORD`、`MDNS_NAME`、`TZ_OFFSET_SEC`。
+- **固件**：WiFi SSID/密码、时区都通过设备自己的 captive portal（`http://<设备>/wifi`）填写，存到 NVS。不需要 `config.h`。
 - **Hook**（`~/.claude/hooks/claude-display.conf`，[模板](examples/claude-display.conf.example)）：`CLAUDE_DISPLAY_URL`、`CLAUDE_DISPLAY_LOG`、`CLAUDE_DISPLAY_LOG_MAX_LINES`。三者也支持环境变量覆盖。
 - **HTTP API**：`POST /status` `{state,msg,project,session}` · `GET /status` · `POST /clear`。状态：`idle` · `working` · `waiting` · `done` · `error`。
 - **安全**：无鉴权，同 LAN 的人都能改屏。别把设备暴露到公网。

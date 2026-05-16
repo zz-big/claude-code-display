@@ -20,3 +20,6 @@ build/
 
 # Hook log file (created at runtime)
 hooks/claude-display.log
+
+# Personal video / talk drafts
+video/

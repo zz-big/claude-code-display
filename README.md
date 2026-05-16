@@ -56,14 +56,9 @@ Concurrent sessions rotate on screen, with WAITING always taking priority.
 
 ### 1 · Flash the firmware
 
-In Arduino IDE, install the **U8g2** and **ArduinoJson** libraries plus the **esp32** board package (by Espressif). Then:
+In Arduino IDE, install the **U8g2** and **ArduinoJson** libraries plus the **esp32** board package (by Espressif). Open `firmware/claude_status/claude_status.ino`, select board **ESP32C3 Dev Module** + partition **Huge APP**, and upload — no config file to edit.
 
-```bash
-cp firmware/claude_status/config.h.example firmware/claude_status/config.h
-# Edit config.h with your WiFi creds + timezone offset.
-```
-
-Open `claude_status.ino`, select board **ESP32C3 Dev Module** + partition **Huge APP**, and upload. After boot the OLED shows the IP; the device is also reachable at `http://claude-display.local` via mDNS.
+On first boot the device finds no saved WiFi and starts an open access point named `claude-display-XXXX`. Join it from your phone, the captive portal pops up (or open `http://192.168.4.1`), then pick your home WiFi, type the password, set your timezone (hours from UTC), and hit **Save and reboot**. The OLED then shows the IP; the device is also reachable at `http://claude-display.local` via mDNS.
 
 ### 2 · Install the hook
 
@@ -111,7 +106,7 @@ The hook is fire-and-forget with a 1-second timeout, so an offline display never
 
 ## Configuration
 
-- **Firmware** ([`config.h`](firmware/claude_status/config.h.example)): `WIFI_SSID`, `WIFI_PASSWORD`, `MDNS_NAME`, `TZ_OFFSET_SEC`.
+- **Firmware**: WiFi SSID/password and timezone are entered via the device's captive portal (`http://<device>/wifi`) and persisted in NVS. No `config.h` required.
 - **Hook** (`~/.claude/hooks/claude-display.conf`, see [example](examples/claude-display.conf.example)): `CLAUDE_DISPLAY_URL`, `CLAUDE_DISPLAY_LOG`, `CLAUDE_DISPLAY_LOG_MAX_LINES`. All also accept env-var overrides.
 - **HTTP API**: `POST /status` `{state,msg,project,session}` · `GET /status` · `POST /clear`. States: `idle` · `working` · `waiting` · `done` · `error`.
 - **Security**: no auth — anyone on the LAN can change the screen. Don't expose to the public internet.

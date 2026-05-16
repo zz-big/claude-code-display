@@ -1,6 +1,6 @@
 ---
 name: claude-code-display
-description: Install and configure the Claude Code Display end-to-end — both flashing the ESP32 firmware (libraries, config.h, compile, upload) and wiring up the host side (hook script + settings.json) on macOS, Linux, or Windows (bash or native PowerShell). Use when the user has cloned this repo and wants the display set up. The firmware-flash half is opt-in (asks the user before touching their hardware).
+description: Install and configure the Claude Code Display end-to-end — both flashing the ESP32 firmware (libraries, compile, upload; WiFi is entered later via the device's captive portal) and wiring up the host side (hook script + settings.json) on macOS, Linux, or Windows (bash or native PowerShell). Use when the user has cloned this repo and wants the display set up. The firmware-flash half is opt-in (asks the user before touching their hardware).
 ---
 
 # Installing Claude Code Display
@@ -9,7 +9,7 @@ This skill walks the user from a freshly cloned repo to a working display.
 
 It has two halves:
 
-- **Firmware flash (Part A — optional, opt-in)**: install Arduino libraries via `arduino-cli`, fill in `config.h` with the user's WiFi, detect the serial port, compile + upload.
+- **Firmware flash (Part A — optional, opt-in)**: install Arduino libraries via `arduino-cli`, detect the serial port, compile + upload. WiFi is configured on the device itself via a captive portal after first boot — no credentials to collect beforehand.
 - **Host wiring (Part B — required)**: copy the hook script to `~/.claude/hooks/`, write a config file with the device URL, merge hooks into `~/.claude/settings.json`, validate connectivity.
 
 ## When to use
@@ -52,7 +52,7 @@ For brevity, the rest of this guide labels dual code blocks **Bash:** and **Powe
 
 ## Decide which parts to run
 
-**Detect first, ask only what you can't detect.** Run these silently and gather context before saying anything:
+**Detect first.** Run these silently and gather context before saying anything:
 
 **Bash:**
 ```bash
@@ -61,44 +61,25 @@ curl -s -m 3 http://claude-display.local/status
 
 # Is an ESP32 plugged in?
 "$CLI" board list 2>/dev/null   # see Part A1 for $CLI
-
-# System timezone offset, as seconds — for TZ_OFFSET_SEC.
-TZ_HHMM="$(date +%z)"      # e.g. +0800
-TZ_OFFSET_SEC=$(( (${TZ_HHMM:0:1}1) * (10#${TZ_HHMM:1:2} * 3600 + 10#${TZ_HHMM:3:2} * 60) ))
 ```
 
 **PowerShell:**
 ```powershell
-# Device reachable? (curl.exe ships on Windows 10+)
 curl.exe -s -m 3 http://claude-display.local/status
-
-# Is an ESP32 plugged in?
-& $CLI board list 2>$null     # $CLI from A1 below
-
-# System timezone offset, as seconds.
-$tz = [TimeZoneInfo]::Local.GetUtcOffset((Get-Date))
-$TZ_OFFSET_SEC = [int]$tz.TotalSeconds   # e.g. 28800 for UTC+8
+& $CLI board list 2>$null       # $CLI from A1 below
 ```
-
-WiFi SSID is **not** auto-detected — even on macOS where `networksetup -getairportnetwork en0` would tell you the Mac's current network, the ESP32 may need to connect to a different one. ESP32-C3 only supports 2.4 GHz; if the host is on 5 GHz, that's often a different SSID. Always ask.
 
 Then decide:
 
 - **Device responds** (HTTP 200 with `count`/`sessions` JSON) → skip Part A, jump to Part B.
 - **Device doesn't respond, no ESP32 plugged in** → tell the user "I don't see a device. Either plug your ESP32 in via USB so I can flash it, or tell me to skip flashing and only configure the host side." Wait for their answer.
-- **Device doesn't respond, ESP32 IS plugged in** → present a single confirmation with the auto-detected port and timezone, then proceed:
+- **Device doesn't respond, ESP32 IS plugged in** → confirm with the user before flashing:
 
-  > I found an ESP32 on `/dev/cu.usbmodem101`. Timezone looks like UTC+8 (from your system).
-  >
-  > To flash it I need:
-  > - **WiFi SSID** (the network the ESP32 should join — note ESP32-C3 only does 2.4 GHz, so make sure that's available)
-  > - **WiFi password**
-  >
-  > Both go into `config.h`, which is gitignored. The password is never logged, never echoed back.
+  > I found an ESP32 on `/dev/cu.usbmodem101`. Ready to flash. WiFi credentials are entered on the device itself via a setup web page after first boot — nothing to provide here.
   >
   > Or say "skip flashing" / "I'll flash manually" and I'll only do the host-side configuration.
 
-Never start Part A without explicit user consent for that prompt — flashing modifies hardware and we're handling credentials. Auto-detect what you can (port, timezone) so the prompt is shorter, but always ask for SSID and password explicitly.
+Never start Part A without explicit user consent — flashing modifies their hardware.
 
 # Part A — Firmware flash
 
@@ -158,40 +139,7 @@ If none of these work, tell the user:
 
 These commands are safe to re-run — already-installed packages are no-ops. If the user's Arduino library directory is somewhere unusual (e.g. `~/Documents/Arduino` on Mac, which is TCC-protected), arduino-cli generally still works because it owns its own user-dir at `~/Library/Arduino15/` (Mac) or `%LOCALAPPDATA%\Arduino15\` (Windows). Watch for "permission denied" though — on Mac, ask the user to grant Terminal access to Documents in **System Settings → Privacy & Security → Files and Folders**; on Windows, this usually means running PowerShell as Administrator or installing arduino-cli to a user-writable location.
 
-### A3. Write `config.h` (auto-detected timezone, asked-for SSID + password)
-
-By the time you reach this step you should already have:
-- `TZ_OFFSET_SEC` computed from `date +%z` (auto-detected — system timezone is reliable)
-- `MDNS_NAME` defaulted to `claude-display`
-
-You should have asked the user for and received:
-- `WIFI_SSID` — always asked, never auto-detected (the ESP32 may need a different network than the host)
-- `WIFI_PASSWORD` — always asked, never grep'd from keychain / configs / env
-
-If `date +%z` returned something weird (rare), fall back to asking the timezone too.
-
-**Strict rules around the password**:
-
-- **Never log the password** anywhere — not into a tracked file, not the hook log, not back into chat. After writing it to `config.h`, refer to it only as `<wifi password>`.
-- **Never put the password on a shell command line** (`echo "$PASS" >> file` will leak it via process listings). Use the `Edit` tool to write directly to the file.
-- **Never commit `config.h`** — it's gitignored, but verify before any subsequent `git add` (only stage specific files, never `git add .`).
-- **Auto mode does NOT authorize credential exposure.** Always ask, even when otherwise running unattended.
-
-Then:
-
-**Bash:**
-```bash
-cp firmware/claude_status/config.h.example firmware/claude_status/config.h
-```
-
-**PowerShell:**
-```powershell
-Copy-Item firmware/claude_status/config.h.example firmware/claude_status/config.h
-```
-
-`Edit` `firmware/claude_status/config.h` and set the four values. After editing, `Read` the file once to confirm the `YOUR_WIFI_*` placeholders are gone — but **do not paste the file contents into chat**, just confirm "config.h written" to the user.
-
-### A4. Confirm the serial port
+### A3. Confirm the serial port
 
 You already detected this in the "Decide which parts to run" step via `arduino-cli board list`. If exactly one ESP32 was found, use it. If multiple were found, ask the user to pick. If the FQBN auto-detected as something other than `esp32:esp32:esp32c3` and the user hasn't said otherwise, default to `esp32:esp32:esp32c3` (this repo's reference hardware) and tell the user what you're using.
 
@@ -199,7 +147,7 @@ If multiple ESP32 boards are listed, ask the user which to use. If none are list
 
 If `board list` shows the port but doesn't auto-detect the FQBN, default to `esp32:esp32:esp32c3` (this repo's reference hardware). Only override if the user says they're using a different board.
 
-### A5. Compile and upload
+### A4. Compile and upload
 
 The default ESP32-C3 partition (1.3MB app) is too small for the GB2312 Chinese font. Always use `huge_app`. On Windows the port is `COM3` / `COM4` / etc. (not `/dev/cu.*`).
 
@@ -224,21 +172,41 @@ Watch for:
 - **"could not open port"** → wrong port, or another program (Serial Monitor, etc.) has it open. Close other tools and retry.
 - **"timed out waiting for packet"** → the board didn't enter download mode. On ESP32-C3 Super Mini, hold the `BOOT` button while plugging USB. Or just retry — usually works on the second try.
 
-After successful upload, wait ~10 seconds for the device to boot and join WiFi:
+### A5. WiFi setup on the device (captive portal)
+
+The firmware ships with no credentials. On first boot it scans NVS for a saved WiFi network, finds none, and comes up as an open access point named `claude-display-XXXX` (last 4 hex of the MAC). The OLED shows:
+
+```
+WiFi setup
+Phone -> AP:
+claude-display-XXXX
+Open in browser:
+192.168.4.1
+```
+
+Tell the user:
+
+> Look at the OLED — it should show "WiFi setup" with an AP name. On your phone:
+> 1. Join the WiFi network `claude-display-XXXX` (open, no password).
+> 2. The setup page should pop up automatically (captive portal). If not, open `http://192.168.4.1`.
+> 3. Pick your home WiFi, enter the password, set your timezone (hours from UTC, e.g. `8` for China, `-5` for US East), hit **Save and reboot**.
+> 4. The device restarts and joins your network. The OLED then shows the IP — that's what Part B needs.
+
+If the captive portal doesn't auto-pop on Android, tell the user to manually visit `http://192.168.4.1` — Android sometimes labels the AP "no internet" and skips the prompt.
+
+Wait for the user to confirm WiFi setup is done before continuing. Then verify the device is reachable:
 
 **Bash:**
 ```bash
-sleep 12
-curl -s -m 3 http://claude-display.local/status
+curl -s -m 5 http://claude-display.local/status
 ```
 
 **PowerShell:**
 ```powershell
-Start-Sleep -Seconds 12
-curl.exe -s -m 3 http://claude-display.local/status
+curl.exe -s -m 5 http://claude-display.local/status
 ```
 
-If that responds with JSON, Part A is done. If it doesn't, ask the user what's on the OLED (look for "WiFi FAIL" or an IP address). If the OLED shows an IP, capture it for Part B. If the OLED is blank or shows "WiFi FAIL", their credentials are wrong — ask again.
+If mDNS doesn't resolve, ask the user for the IP shown on the OLED and use that for Part B.
 
 # Part B — Host wiring
 
@@ -392,9 +360,8 @@ Then tell the user:
 
 ## Things to NOT do
 
-- **Never start Part A without explicit user consent.** Flashing modifies their hardware and we'll handle their WiFi password — both require informed buy-in.
-- **Never log or echo the WiFi password.** Not into `claude-display.log`, not into a tool result, not back into chat. Reference it as `<wifi password>` after `Edit`-ing it into `config.h`. Auto mode does NOT authorize credential exposure.
-- **Never commit `config.h`.** It's gitignored, but verify before any subsequent `git add .` — only stage specific files.
+- **Never start Part A without explicit user consent.** Flashing modifies their hardware — it needs informed buy-in.
+- **Never ask the user for their WiFi password** in chat. Credentials go in via the device's own captive-portal page directly from their phone — they don't pass through this conversation.
 - Do not assume mDNS works on every network. Corporate WiFi, guest WiFi, and some routers block multicast DNS.
 - Do not modify `~/.claude/settings.json` without backing it up first if it's non-empty:
   - **Bash:** `cp ~/.claude/settings.json ~/.claude/settings.json.bak`
